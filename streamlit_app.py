@@ -1,30 +1,47 @@
-import altair as alt
-import numpy as np
-import pandas as pd
 import streamlit as st
+import boto3
+from botocore.exceptions import ClientError
 
-num_points = st.slider("Number of points in spiral", 1, 10000, 1100)
-num_turns = st.slider("Number of turns in spiral", 1, 300, 31)
+# Initialize the Lambda client
+lambda_client = boto3.client('lambda')
 
-indices = np.linspace(0, 1, num_points)
-theta = 2 * np.pi * num_turns * indices
-radius = indices
+# Define the name of your Lambda function
+lambda_function_name = 'get-glue-datacatalog-column-names'
 
-x = radius * np.cos(theta)
-y = radius * np.sin(theta)
+def call_lambda_function():
+    try:
+        # Call the Lambda function
+        response = lambda_client.invoke(
+            FunctionName=lambda_function_name,
+            InvocationType='RequestResponse',
+            Payload=b''
+        )
+        # Extract data from Lambda response
+        data = response['Payload'].read().decode('utf-8')
+        return data
+    except ClientError as e:
+        st.error(f"Error calling Lambda function: {e}")
+        return None
 
-df = pd.DataFrame({
-    "x": x,
-    "y": y,
-    "idx": indices,
-    "rand": np.random.randn(num_points),
-})
+def display_table(data):
+    if data:
+        try:
+            # Parse JSON data
+            rows = json.loads(data)
+            # Display data in a table
+            st.table(rows)
+        except json.JSONDecodeError as e:
+            st.error(f"Error decoding JSON data: {e}")
 
-st.altair_chart(alt.Chart(df, height=700, width=700)
-    .mark_point(filled=True)
-    .encode(
-        x=alt.X("x", axis=None),
-        y=alt.Y("y", axis=None),
-        color=alt.Color("idx", legend=None, scale=alt.Scale()),
-        size=alt.Size("rand", legend=None, scale=alt.Scale(range=[1, 150])),
-    ))
+def main():
+    st.title('Display Table from Lambda Function')
+    
+    # Button to call Lambda function
+    if st.button('Fetch Data'):
+        # Call Lambda function and get data
+        data = call_lambda_function()
+        # Display data in a table
+        display_table(data)
+
+if __name__ == "__main__":
+    main()
